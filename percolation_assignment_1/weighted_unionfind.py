@@ -15,7 +15,7 @@ class WeightedUnionFind:
         return p
 
     def connected(self, p, q):
-        return find(p) == find(q)
+        return self.find(p) == self.find(q)
 
     def union(self, p, q):
         root_p, root_q = self.find(p), self.find(q)
