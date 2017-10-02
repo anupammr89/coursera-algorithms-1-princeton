@@ -1,17 +1,21 @@
 #! /usr/bin/python3
 
 class WeightedUnionFind:
-    def __init__(self, size):
+    def __init__(self, size, use_pc):
         self.root = [i for i in range(size)]
         self.size = [1 for i in range(size)]
         self.components = size
+        self.use_path_compression = use_pc 
 
     def print_root(self):
         print("Root array {}, size is {}".format(self.root, len(self.root)))
         #print("Size array {}".format(self.size))
 
     def find(self, p):
-        while(p != self.root[p]): p = self.root[p]
+        while(p != self.root[p]):
+            if(self.use_path_compression):
+                self.root[p] = self.root[self.root[p]]
+            p = self.root[p]
         return p
 
     def connected(self, p, q):
@@ -39,7 +43,7 @@ def testUnion(uf, p, q):
     print("Number of connected components is {}".format(uf.count()))
 
 def testWeightedUnionFind():
-    uf = WeightedUnionFind(10)
+    uf = WeightedUnionFind(10, True)
     uf.print_root()
     
     testUnion(uf, 4,3)

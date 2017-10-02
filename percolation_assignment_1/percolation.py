@@ -4,6 +4,7 @@ from weighted_unionfind import WeightedUnionFind
 import random
 import statistics
 import math
+import time
 
 class Percolation:
     # Static/Class variables
@@ -14,16 +15,16 @@ class Percolation:
     # Constructor and init methods
     def __init__(self, size):
         self.init_grid(size)
-        self.init_wuf(size)
+        self.init_wuf(size, True)
 
     def init_grid(self, n):
         self.grid = [[Percolation.close for row in range(n)] for col in range(n)]
         self.grid_size = n
         self.top_row, self.bottom_row = 0, n-1
-        self.blocked_sites = set([i for i in range(n*n)])
+        #self.blocked_sites = set([i for i in range(n*n)])
 
-    def init_wuf(self, size):
-        self.wuf = WeightedUnionFind(size*size)
+    def init_wuf(self, size, use_pc):
+        self.wuf = WeightedUnionFind(size*size, use_pc)
 
     # Grid print methods
     # For every site in a grid row, print state (full/open/close) of the corresponding root
@@ -77,6 +78,8 @@ class Percolation:
     def site_index_to_row_col(self, index):     return index//self.grid_size, index%self.grid_size
 
     def is_top_row_site(self, row):             return row == self.top_row
+
+    def is_bottom_row_site(self, row):          return row == self.bottom_row
 
     def number_of_open_sites(self):             return self.grid_size*self.grid_size - sum(row.count(Percolation.close) for row in self.grid)
 
@@ -141,7 +144,7 @@ class Percolation:
     def open_site(self, row, col):
         if self.is_site_valid(row, col):
             self.grid[row][col] = Percolation.open
-            self.blocked_sites.remove(self.site_row_col_to_index(row, col))
+            #self.blocked_sites.remove(self.site_row_col_to_index(row, col))
             if self.is_top_row_site(row):
                 self.full_site(row, col)
             self.connect_neighbors(row, col)
@@ -153,6 +156,15 @@ class Percolation:
         else:
             return False
 
+    # Check if the system percolates using connected operation (Slow!)
+    def percolates2(self):
+        num = self.grid_size * self.grid_size
+        for index1 in range(num - self.grid_size, num):
+            for index2 in range(self.grid_size):
+                if self.wuf.connected(index1, index2): return True
+        else:
+            return False
+
 class PercolationStats:
     # Private APIs
 
@@ -161,40 +173,82 @@ class PercolationStats:
         self.grid_size = grid_size
         self.num_experiments = num_experiments  
         self.num_open_sites_when_percolates = []
+        self.total_time = 0
+        self.select_time = 0
+        self.open_time = 0
+        self.select_open_time = 0
+        self.perc_time = 0
         self.MonteCarloSimulate()
-        self.printStats()
+        if num_experiments > 1:
+            self.printStats()
+        self.printSimulationTime()
 
     def MonteCarloSimulate(self):
         for i in range(self.num_experiments):
             self.grid = Percolation(self.grid_size)
+            self.rand_site = self.RandomSiteGenerator()
             open_sites = self.RunMonteCarloSimulation()
             self.num_open_sites_when_percolates.append(open_sites)
+            print("Exp {} - Fraction of open/full sites when system percolates : {}".format(i+1, open_sites))
 
     def RunMonteCarloSimulation(self):
         #self.grid.print_grid()
         #self.grid.print_actual_grid()
 
-        while(self.grid.percolates() != True):
+        start = time.time()
+        while(True):
+            start1 = time.time()
             self.GridOpenRandomSite(self.grid)
+            self.select_open_time += (time.time() - start1)
+
+            start1 = time.time()
+            test = self.grid.percolates()
+            self.perc_time += (time.time() - start1)
+            
+            if(test):
+                break
+        self.total_time += (time.time() - start)
 
         #self.grid.print_grid()
         #self.grid.print_actual_grid()
 
         fraction = self.grid.number_of_open_sites()/(self.grid_size*self.grid_size)
-        print("Number of open/full sites is {}".format(fraction))
-
         return fraction
 
     def GridOpenRandomSite(self, grid):
-        random_index = random.sample(self.grid.blocked_sites, 1)
+        # Below code selects one random sample from list.
+        # This has to generate randomness every iteration
+
+        #start = time.time()
+        #random_index = random.sample(self.grid.blocked_sites, 1)
+        #row, col = self.grid.site_index_to_row_col(random_index[0])
+        #self.select_time += (time.time() - start)
+
+        # Below code uses generator to get index from a shuffled list
+        # This generates random list once, and then uses the end element
+        # every iteration. Thus this is faster than above code
+
+        start = time.time()
+        random_index = next(self.rand_site)
         row, col = self.grid.site_index_to_row_col(random_index[0])
+        self.select_time += (time.time() - start)
+        
+        start = time.time()
         self.GridOpen(self.grid, row, col)
+        self.open_time += (time.time() - start)
 
     def GridOpen(self, grid, row, col):
         #print("\nOpening site ({},{})".format(row, col))
         grid.open_site(row, col)
         #grid.print_grid()
         #grid.print_actual_grid()
+
+    def RandomSiteGenerator(self):
+        random_list = [i for i in range(self.grid_size * self.grid_size)]
+        random.shuffle(random_list)
+        while random_list:
+            index, random_list = random_list[-1:], random_list[:-1]
+            yield index
 
     def mean(self):
         return statistics.mean(self.num_open_sites_when_percolates)
@@ -212,15 +266,24 @@ class PercolationStats:
         return self.mean() + (1.96*self.stddev()/math.sqrt(self.grid_size))
 
     def printStats(self):
-        print("Mean - {}".format(self.mean()))
-        print("Variance - {}".format(self.variance()))
-        print("Standard Deviation - {}".format(self.stddev()))
-        print("Confidence Low - {}".format(self.confidenceLow()))
-        print("Confidence High - {}".format(self.confidenceHigh()))
+        print("\n\n----------Monte Carlo Simulation Statistics----------")
+        print("Mean                                    : {}".format(self.mean()))
+        print("Variance                                : {}".format(self.variance()))
+        print("Standard Deviation                      : {}".format(self.stddev()))
+        print("Confidence Low                          : {}".format(self.confidenceLow()))
+        print("Confidence High                         : {}".format(self.confidenceHigh()))
+
+    def printSimulationTime(self):
+        print("\n\n-------------Monte Carlo Simulation Time-------------")
+        print("total time to select sites              : {}".format(self.select_time))
+        print("total time to open sites                : {}".format(self.open_time))
+        print("total time for select and open combined : {}".format(self.select_open_time))
+        print("total time to check percolation         : {}".format(self.perc_time))
+        print("total time to percolate                 : {}".format(self.total_time))
 
 def main():
-    size = 10
-    num = 10
+    size = 100
+    num = 2
     ps = PercolationStats(size, num)
 
 if __name__ == "__main__": main()
